@@ -1,0 +1,7 @@
+# .gitignore
+.env
+__pycache__/
+*.pyc
+*.log
+# Adicionado para ignorar o arquivo de armazenamento de tokens
+token_storage.json
