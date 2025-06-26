@@ -15,8 +15,14 @@ GHL_CLIENT_ID = os.getenv("GHL_CLIENT_ID")
 GHL_CLIENT_SECRET = os.getenv("GHL_CLIENT_SECRET")
 GHL_REDIRECT_URI = os.getenv("GHL_REDIRECT_URI")
 # O ID da localizacao (sub-conta) que o seu token deve acessar.
-# Obtenha este ID da URL da sua sub-conta no GoHighLevel.
 GHL_LOCATION_ID = os.getenv("GHL_LOCATION_ID")
+
+# IDs e Nomes para a funcionalidade de Health Check por Tag
+# O ID do contato especifico que recebera a tag de health check.
+GHL_HEALTH_CHECK_CONTACT_ID = os.getenv("GHL_HEALTH_CHECK_CONTACT_ID")
+# O nome da tag que sera adicionada ao contato para sinalizar o health check.
+GHL_HEALTH_CHECK_TAG_NAME = os.getenv("GHL_HEALTH_CHECK_TAG_NAME")
+# Removido: GHL_NOTIFICATION_WORKFLOW_ID, pois o trigger sera a tag
 
 # URLs dos endpoints da API GoHighLevel
 TOKEN_URL = "https://services.leadconnectorhq.com/oauth/token"
@@ -32,32 +38,23 @@ def save_tokens(token_data: dict):
     Salva os dados do token em um arquivo JSON.
     Converte o objeto datetime para string ISO formatada.
     """
-    print(f"Salvando tokens em {TOKEN_FILE_PATH}...")
-    
-    data_to_save = token_data.copy()
-
-    if 'expiry_timestamp' in data_to_save and isinstance(data_to_save['expiry_timestamp'], datetime):
-        data_to_save['expiry_timestamp'] = data_to_save['expiry_timestamp'].isoformat()
-    
     try:
         with open(TOKEN_FILE_PATH, 'w') as f:
-            json.dump(data_to_save, f, indent=4)
-        print("Tokens salvos com sucesso!")
+            json.dump(token_data, f, indent=4)
+        print("Tokens salvos.")
     except Exception as e:
-        print(f"Erro ao salvar tokens no arquivo JSON: {e}")
+        print(f"Erro ao salvar tokens: {e}")
 
 def load_tokens():
     """
     Carrega os dados do token de um arquivo JSON.
     Converte a string ISO formatada de volta para um objeto datetime.
     """
-    print(f"Carregando tokens de {TOKEN_FILE_PATH}...")
     if not os.path.exists(TOKEN_FILE_PATH):
-        print("Arquivo de tokens nao encontrado.")
         return None
     
     if os.path.isdir(TOKEN_FILE_PATH):
-        print(f"ERRO CRITICO: '{TOKEN_FILE_PATH}' eh um diretorio, nao um arquivo. Por favor, remova o diretorio manualmente para permitir a criacao do arquivo.")
+        print(f"Erro: '{TOKEN_FILE_PATH}' é um diretório, não um arquivo. Remova-o manualmente.")
         return None
 
     try:
@@ -67,13 +64,12 @@ def load_tokens():
         if 'expiry_timestamp' in token_data and isinstance(token_data['expiry_timestamp'], str):
             token_data['expiry_timestamp'] = datetime.fromisoformat(token_data['expiry_timestamp'])
         
-        print("Tokens carregados com sucesso!")
         return token_data
     except json.JSONDecodeError as e:
-        print(f"Erro de decodificacao JSON no arquivo de tokens: {e}. O arquivo pode estar corrompido.")
+        print(f"Erro de decodificação JSON no arquivo de tokens: {e}. O arquivo pode estar corrompido.")
         return None
     except Exception as e:
-        print(f"Erro ao carregar tokens do arquivo JSON: {e}")
+        print(f"Erro ao carregar tokens: {e}")
         return None
 
 # --- Funcoes de Autenticacao ---
@@ -81,9 +77,7 @@ def load_tokens():
 def get_access_token(authorization_code: str):
     """
     Troca um codigo de autorizacao por um token de acesso e um token de atualizacao.
-    Usa credenciais do ambiente local (GHL_CLIENT_ID, etc.).
     """
-    print("Iniciando a troca do codigo de autorizacao por tokens...")
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
     }
@@ -98,21 +92,17 @@ def get_access_token(authorization_code: str):
     try:
         response = requests.post(TOKEN_URL, headers=headers, data=data)
         response.raise_for_status()
-        token_info = response.json()
-        print("Tokens de acesso e atualizacao obtidos com sucesso!")
-        return token_info
+        return response.json()
     except requests.exceptions.HTTPError as e:
-        print(f"Erro HTTP ao obter token de acesso: {e.response.status_code} - {e.response.text}")
+        print(f"Erro HTTP ao obter token: {e.response.status_code} - {e.response.text}")
     except requests.exceptions.RequestException as e:
-        print(f"Erro de requisicao ao obter token de acesso: {e}")
+        print(f"Erro de requisição ao obter token: {e}")
     return None
 
 def refresh_access_token(refresh_token: str):
     """
     Renova um token de acesso usando um token de atualizacao.
-    Usa credenciais do ambiente local (GHL_CLIENT_ID, etc.).
     """
-    print("Iniciando a renovacao do token de acesso...")
     headers = {
         "Content-Type": "application/x-www-form-urlencoded"
     }
@@ -126,13 +116,11 @@ def refresh_access_token(refresh_token: str):
     try:
         response = requests.post(TOKEN_URL, headers=headers, data=data)
         response.raise_for_status()
-        token_info = response.json()
-        print("Token de acesso renovado com sucesso!")
-        return token_info
+        return response.json()
     except requests.exceptions.HTTPError as e:
-        print(f"Erro HTTP ao renovar token de acesso: {e.response.status_code} - {e.response.text}")
+        print(f"Erro HTTP ao renovar token: {e.response.status_code} - {e.response.text}")
     except requests.exceptions.RequestException as e:
-        print(f"Erro de requisicao ao renovar token de acesso: {e}")
+        print(f"Erro de requisição ao renovar token: {e}")
     return None
 
 def make_ghl_api_call(access_token: str, endpoint: str, method: str = "GET", json_data: dict = None, params: dict = None):
@@ -147,57 +135,47 @@ def make_ghl_api_call(access_token: str, endpoint: str, method: str = "GET", jso
     url = f"{API_BASE_URL}{endpoint}"
 
     try:
-        response = None
-        if method.upper() == "GET":
-            response = requests.get(url, headers=headers, params=params)
-        elif method.upper() == "POST":
-            response = requests.post(url, headers=headers, json=json_data, params=params)
-        elif method.upper() == "PUT":
-            response = requests.put(url, headers=headers, json=json_data, params=params)
-        elif method.upper() == "DELETE":
-            response = requests.delete(url, headers=headers, params=params)
-        else:
-            raise ValueError(f"Metodo HTTP '{method}' nao suportado.")
-
+        response = requests.request(method.upper(), url, headers=headers, json=json_data, params=params)
         response.raise_for_status()
         return (response.json() if response.content else {}, response.status_code)
     except requests.exceptions.HTTPError as e:
-        print(f"Erro HTTP ao chamar a API: {e.response.status_code} - {e.response.text}")
-        if e.response.status_code == 401:
-            print("Token de acesso invalido ou expirado. Tente renova-lo na proxima tentativa.")
-        elif e.response.status_code == 429:
+        print(f"Erro na API {endpoint}: {e.response.status_code} - {e.response.text.strip()[:100]}...")
+        if e.response.status_code == 429:
             retry_after = int(e.response.headers.get("Retry-After", 1))
-            print(f"Limite de taxa excedido. Aguarde {retry_after} segundos antes de re-tentar.")
             time.sleep(retry_after)
         return (None, e.response.status_code)
     except requests.exceptions.RequestException as e:
-        print(f"Erro de requisicao ao chamar a API: {e}")
+        print(f"Erro de requisição na API {endpoint}: {e}")
         return (None, None)
 
-# --- Logica Principal de Exemplo (para execucao LOCAL) ---
+def add_tag_to_contact_by_id(access_token: str, contact_id: str, tag_name: str):
+    """
+    Adiciona uma tag a um contato específico no GoHighLevel.
+    """
+    print(f"Adicionando tag '{tag_name}' ao contato ID '{contact_id}'...")
+    endpoint = f"/contacts/{contact_id}/tags"
+    payload = {"tags": [tag_name]}
+    # Para adicionar uma tag, é um POST para /contacts/{contactId}/tags
+    return make_ghl_api_call(access_token, endpoint, method="POST", json_data=payload)
+
+# --- Logica Principal de Exemplo ---
 if __name__ == "__main__":
-    if not all([GHL_CLIENT_ID, GHL_CLIENT_SECRET, GHL_REDIRECT_URI, GHL_LOCATION_ID]):
-        print("Erro: As variaveis de ambiente GHL_CLIENT_ID, GHL_CLIENT_SECRET, GHL_REDIRECT_URI e GHL_LOCATION_ID devem estar definidas no seu arquivo .env.")
-        print("Consulte o arquivo .env.example e o README.md para mais informacoes.")
-        exit(1)
-
-    # ** NOVO DEBUG: Imprime GHL_LOCATION_ID como lido pelo script **
-    print(f"DEBUG: GHL_LOCATION_ID lido do ambiente: '{GHL_LOCATION_ID}' (comprimento: {len(GHL_LOCATION_ID) if GHL_LOCATION_ID else 0})")
-    if GHL_LOCATION_ID and (GHL_LOCATION_ID.startswith(" ") or GHL_LOCATION_ID.endswith(" ")):
-        print("AVISO: GHL_LOCATION_ID parece ter espacos em branco no inicio ou fim. Isso pode causar o erro 403.")
-
+    if not all([GHL_CLIENT_ID, GHL_CLIENT_SECRET, GHL_REDIRECT_URI, GHL_LOCATION_ID,
+                GHL_HEALTH_CHECK_CONTACT_ID, GHL_HEALTH_CHECK_TAG_NAME]):
+        print("Erro: Variáveis de ambiente essenciais para autenticação ou health check ausentes no .env.")
+        sys.exit(1)
 
     current_token_data = None
 
-    # Tenta carregar tokens existentes do arquivo local
+    # Tenta carregar tokens existentes
     stored_tokens = load_tokens()
 
     if stored_tokens:
         current_token_data = stored_tokens.copy()
         
-        # Verifica se o token de acesso expirou ao carregar
+        # Verifica se o token de acesso expirou
         if 'expiry_timestamp' in current_token_data and datetime.now() >= current_token_data['expiry_timestamp']:
-            print("Access Token expirado ao carregar. Tentando renovar...")
+            print("Access Token expirado. Renovando...")
             refresh_token = current_token_data.get("refresh_token")
             if refresh_token:
                 new_token_info = refresh_access_token(refresh_token)
@@ -206,96 +184,64 @@ if __name__ == "__main__":
                     expires_in = current_token_data.get("expires_in", 3600)
                     current_token_data['expiry_timestamp'] = datetime.now() + timedelta(seconds=expires_in - 300)
                     save_tokens(current_token_data)
-                    print("Token renovado com sucesso!")
+                    print("Token renovado e salvo.")
                 else:
-                    print("Falha ao renovar o token expirado. Requer nova autorizacao manual.")
+                    print("Falha ao renovar token. Requer nova autorização manual.")
                     current_token_data = None
             else:
-                print("Refresh Token nao disponivel. Requer nova autorizacao manual.")
+                print("Refresh Token não disponível. Requer nova autorização manual.")
                 current_token_data = None
         else:
-            print("Tokens carregados e ainda validos.")
+            print("Tokens carregados e válidos.")
         
         if current_token_data and current_token_data.get("access_token"):
-            print(f"Access Token: {current_token_data.get('access_token', '')[:10]}...")
-            print(f"Refresh Token: {current_token_data.get('refresh_token', '')[:10]}...")
-            print(f"Escopos: {current_token_data.get('scope', 'N/A')}")
-            print(f"Expirara em: {current_token_data.get('expiry_timestamp').strftime('%Y-%m-%d %H:%M:%S') if current_token_data.get('expiry_timestamp') else 'N/A'}")
+            print(f"Access Token (parcial): {current_token_data.get('access_token', '')[:10]}...")
+            print(f"Refresh Token (parcial): {current_token_data.get('refresh_token', '')[:10]}...")
+            # Removido: escopos completos e expiração para tornar a saída mais concisa
         else:
-            print("Nao foi possivel obter ou renovar tokens. Nao havera chamadas a API.")
-            exit(1)
+            print("Não foi possível obter ou renovar tokens para continuar.")
+            sys.exit(1)
 
-    # Se nao houver tokens validos apos carregar/renovar, tenta obter com o codigo de autorizacao inicial do .env
+    # Se ainda não houver tokens válidos, tenta obter com o código de autorização inicial do .env
     if not current_token_data or not current_token_data.get("access_token"):
         initial_authorization_code = os.getenv("GHL_AUTHORIZATION_CODE")
         if initial_authorization_code:
-            print(f"Nenhum token valido encontrado. Tentando obter com o Codigo de Autorizacao inicial do .env: {initial_authorization_code[:10]}...")
+            print("Tentando obter token com Código de Autorização inicial...")
             token_info = get_access_token(initial_authorization_code)
             if token_info:
                 current_token_data = token_info.copy()
                 expires_in = current_token_data.get("expires_in", 3600)
                 current_token_data['expiry_timestamp'] = datetime.now() + timedelta(seconds=expires_in - 300)
                 save_tokens(current_token_data)
-                print(f"Access Token: {current_token_data.get('access_token', '')[:10]}...")
-                print(f"Refresh Token: {current_token_data.get('refresh_token', '')[:10]}...")
-                print(f"Escopos: {current_token_data.get('scope', 'N/A')}")
-                print(f"Expirara em: {current_token_data.get('expiry_timestamp').strftime('%Y-%m-%d %H:%M:%S') if current_token_data.get('expiry_timestamp') else 'N/A'}")
+                print("Token inicial obtido e salvo.")
+                print(f"Access Token (parcial): {current_token_data.get('access_token', '')[:10]}...")
+                print(f"Refresh Token (parcial): {current_token_data.get('refresh_token', '')[:10]}...")
             else:
-                print("Nao foi possivel obter tokens com o codigo de autorizacao inicial. Verifique o codigo e as credenciais no seu .env.")
-                exit(1)
+                print("Falha ao obter token inicial. Verifique código e credenciais no .env.")
+                sys.exit(1)
         else:
-            print("Nenhum token valido e nenhum GHL_AUTHORIZATION_CODE fornecido para a autorizacao inicial no .env.")
-            print("Por favor, obtenha um codigo de autorizacao e defina GHL_AUTHORIZATION_CODE no seu .env para a primeira execucao.")
-            exit(1)
+            print("Nenhum token válido e GHL_AUTHORIZATION_CODE ausente no .env para autorização inicial.")
+            sys.exit(1)
 
-    # --- Testando a chamada à API de Contatos com o Access Token atual (com retry) ---
-    print("\n--- Testando chamada a API de Contatos com o Access Token atual (com retry) ---")
-    contacts_endpoint = "/contacts/"
-    # O parametro locationId é OBRIGATORIO para /contacts/
-    contacts_params = {"locationId": GHL_LOCATION_ID} 
-
-    max_api_retries = 2
-    api_call_succeeded = False
+    # --- Realizar Health Check adicionando uma tag ao contato ---
+    print("\nExecutando Health Check (adicionando tag ao contato GoHighLevel)...")
+    health_check_succeeded = False
     
-    for attempt in range(max_api_retries):
-        print(f"Tentativa {attempt + 1}/{max_api_retries} para chamar {contacts_endpoint}...")
-        contact_data, status_code = make_ghl_api_call(
-            access_token=current_token_data["access_token"],
-            endpoint=contacts_endpoint,
-            method="GET",
-            params=contacts_params
-        )
+    # Para adicionar tags, o endpoint é /contacts/{contactId}/tags e o locationId é um parâmetro de query
+    add_tag_response, add_tag_status = add_tag_to_contact_by_id(
+        access_token=current_token_data["access_token"],
+        contact_id=GHL_HEALTH_CHECK_CONTACT_ID,
+        tag_name=GHL_HEALTH_CHECK_TAG_NAME
+    )
 
-        if contact_data is not None and status_code == 200:
-            print("Chamada a API de Contatos bem-sucedida.")
-            if 'contacts' in contact_data and len(contact_data['contacts']) > 0:
-                print(f"Primeiro contato: {contact_data['contacts'][0].get('firstName')} {contact_data['contacts'][0].get('lastName')}")
-            else:
-                print("Nenhum contato encontrado ou estrutura de resposta inesperada.")
-            api_call_succeeded = True
-            break
-        elif status_code == 401:
-            print("Access Token expirado ou invalido durante a chamada. Tentando renovar...")
-            refresh_token = current_token_data.get("refresh_token")
-            if refresh_token:
-                new_token_info = refresh_access_token(refresh_token)
-                if new_token_info:
-                    current_token_data.update(new_token_info)
-                    expires_in = current_token_data.get("expires_in", 3600)
-                    current_token_data['expiry_timestamp'] = datetime.now() + timedelta(seconds=expires_in - 300)
-                    save_tokens(current_token_data)
-                    print("Token renovado com sucesso. Re-tentando a chamada a API...")
-                else:
-                    print("Falha ao renovar token. Requer nova autorizacao manual.")
-                    break
-            else:
-                print("Refresh Token nao disponivel. Requer nova autorizacao manual.")
-                break
-        elif status_code == 429:
-            print("Limite de taxa excedido. A funcao make_ghl_api_call ja implementa um sleep. Re-tentando...")
-        else:
-            print(f"Chamada a API falhou com status {status_code}. Nao ha logica de retry automatica para este erro.")
-            break
+    if add_tag_response is not None and (add_tag_status == 200 or add_tag_status == 201):
+        print(f"Tag '{GHL_HEALTH_CHECK_TAG_NAME}' adicionada ao contato '{GHL_HEALTH_CHECK_CONTACT_ID}' com sucesso!")
+        health_check_succeeded = True
+    else:
+        print(f"Falha ao adicionar tag '{GHL_HEALTH_CHECK_TAG_NAME}' ao contato '{GHL_HEALTH_CHECK_CONTACT_ID}'. Status: {add_tag_status}")
 
-    if not api_call_succeeded:
-        print("Chamada a API de Contatos falhou apos todas as tentativas.")
+    if health_check_succeeded:
+        print("Microserviço operacional. Notificação de saúde disparada via tag.")
+    else:
+        print("Health Check falhou. Microserviço pode não estar operacional ou há um problema de permissão/ID.")
+        sys.exit(1) # Sair com erro se o health check falhar
