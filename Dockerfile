@@ -9,14 +9,12 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copia o diretório src e o arquivo de armazenamento de tokens (se existir) para o contêiner
-# Para produção, o token_storage.json não deve ser copiado diretamente,
-# mas sim montado via volume ou gerenciador de segredos.
+# Copia o diretório src para o contêiner
 COPY src/ ./src/
-# COPY token_storage.json . # Descomente para testes locais com persistência dentro do contêiner
 
 # Define a variável de ambiente para que Python imprima logs imediatamente
 ENV PYTHONUNBUFFERED 1
 
-# Comando para executar a aplicação
+# Comando padrão para executar a aplicação
+# O script agora tentará carregar o ghl_tokens.json de um volume montado
 CMD ["python", "src/auth_handler.py"]
